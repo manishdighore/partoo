@@ -1,0 +1,44 @@
+═══════════════════════════════════════════
+  Partoo Analytics Dashboard — Quick Start
+═══════════════════════════════════════════
+
+1. INSTALL DEPENDENCIES  (one time only)
+   ----------------------------------------
+   pip install -r requirements.txt
+
+2. START THE SERVER
+   ----------------------------------------
+   python app.py
+
+   You'll see:
+     🚀  Partoo Dashboard running at  http://localhost:5000
+
+3. OPEN THE DASHBOARD
+   ----------------------------------------
+   Go to http://localhost:5000 in your browser
+
+4. ENTER YOUR API KEY & RUN
+   ----------------------------------------
+   • Paste your Partoo x-APIKey in the input
+   • Click "Run Dashboard"
+   • All 10 metrics will load instantly
+
+═══════════════════════════════════════════
+  METRICS FETCHED
+═══════════════════════════════════════════
+
+Review Analytics
+  ✦ average_rating
+  ✦ reviews_count
+  ✦ reply_time__total  (shown as avg = total ÷ count)
+
+Presence Analytics
+  ✦ business_impressions_desktop_maps
+  ✦ business_impressions_mobile_maps
+  ✦ business_impressions_desktop_search
+  ✦ business_impressions_mobile_search
+  ✦ business_direction_requests
+  ✦ call_clicks
+  ✦ website_clicks
+
+═══════════════════════════════════════════
