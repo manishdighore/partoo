@@ -206,6 +206,25 @@
     .debug-filter:focus { border-color: var(--indigo); }
     .debug-toolbar { display: flex; align-items: center; gap: 10px; padding: 10px 0 4px; }
 
+    .ai-key-row { margin: 0 24px 18px; padding: 16px; border-radius: 10px; background: rgba(255,255,255,.02); border: 1px solid var(--border); }
+    .ai-key-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+    .ai-key-title { font-size: 13px; font-weight: 700; color: var(--txt); }
+    .ai-key-status { font-size: 11px; color: var(--txt3); }
+    .ai-key-input-row { display: flex; gap: 10px; align-items: center; }
+    .chat-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 24px; overflow: hidden; }
+    .chat-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .chat-title { font-size: 14px; font-weight: 700; color: var(--txt); }
+    .chat-status { font-size: 12px; color: var(--txt3); }
+    .chat-messages { padding: 16px 20px; display: grid; gap: 10px; max-height: 260px; overflow-y: auto; }
+    .chat-empty { color: var(--txt3); font-size: 13px; line-height: 1.6; }
+    .chat-msg { max-width: 82%; padding: 10px 12px; border-radius: 10px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+    .chat-msg.user { justify-self: end; background: rgba(99,102,241,.18); border: 1px solid rgba(99,102,241,.25); color: #dbeafe; }
+    .chat-msg.assistant { justify-self: start; background: rgba(255,255,255,.05); border: 1px solid var(--border); color: var(--txt2); }
+    .chat-input-row { display: flex; gap: 10px; padding: 14px 20px 18px; border-top: 1px solid var(--border); }
+    .chat-input { flex: 1; min-width: 0; background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: 10px; padding: 11px 14px; color: var(--txt); font-size: 13px; font-family: 'Inter', sans-serif; outline: none; }
+    .chat-input:focus { border-color: var(--indigo); box-shadow: 0 0 0 2px rgba(99,102,241,.15); }
+    @media(max-width:700px){ .ai-key-input-row, .chat-input-row { flex-direction: column; align-items: stretch; } .chat-msg { max-width: 100%; } }
+
     .footer { text-align: center; padding: 20px; font-size: 12px; color: var(--txt3); border-top: 1px solid var(--border); margin-top: auto; }
   </style>
 </head>
@@ -214,7 +233,7 @@
 <div id="root"></div>
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback } = React;
-const API = "http://localhost:5000";
+const API = window.location.origin;
 
 const MARKETS = [
   { code: "DK",  name: "Denmark",              flag: "🇩🇰" },
@@ -465,7 +484,7 @@ function Toast({ msg, type, onDone }) {
 }
 
 /* ── Settings Tab ── */
-function SettingsTab({ localKeys, setLocalKeys, savedMarkets, onSave, saving }) {
+function SettingsTab({ localKeys, setLocalKeys, savedMarkets, onSave, saving, openAiKey, setOpenAiKey, openAiConfigured, onSaveOpenAi, savingOpenAi }) {
   const configuredCount = savedMarkets.length;
   return (
     <div className="settings-page">
@@ -510,13 +529,102 @@ function SettingsTab({ localKeys, setLocalKeys, savedMarkets, onSave, saving }) 
             Only non-empty fields are saved. Existing saved keys are not overwritten unless you type a new value.
           </div>
         </div>
+        <div className="ai-key-row">
+          <div className="ai-key-top">
+            <div className="ai-key-title">OpenAI Key for Data Chat</div>
+            <div className="ai-key-status">{openAiConfigured ? "Configured" : "Not configured"}</div>
+          </div>
+          <div className="ai-key-input-row">
+            <input
+              className="key-input-sm"
+              type="password"
+              placeholder="Uses OPENAI_API_KEY if already set, or paste a key..."
+              value={openAiKey}
+              onChange={e => setOpenAiKey(e.target.value)}
+              autoComplete="off"
+            />
+            <button className="btn btn-save" onClick={onSaveOpenAi} disabled={savingOpenAi}>
+              {savingOpenAi ? "Saving..." : "Save OpenAI"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChatPanel({ selectedMarket, hasData, openAiConfigured, data, apiErrors }) {
+  const [messages, setMessages] = useState([]);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const send = useCallback(async () => {
+    const question = draft.trim();
+    if (!question || sending) return;
+    const nextMessages = [...messages, { role: "user", content: question }];
+    setMessages(nextMessages);
+    setDraft("");
+    setSending(true);
+    try {
+      const r = await fetch(API + "/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: question,
+          market: selectedMarket,
+          metrics: data,
+          errors: apiErrors,
+          history: messages,
+        }),
+      });
+      const json = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(json.error || "Chat request failed");
+      setMessages([...nextMessages, { role: "assistant", content: json.answer || "No answer returned." }]);
+    } catch (e) {
+      setMessages([...nextMessages, { role: "assistant", content: e.message || "Chat failed." }]);
+    } finally {
+      setSending(false);
+    }
+  }, [draft, sending, messages, selectedMarket, data, apiErrors]);
+
+  return (
+    <div className="chat-panel">
+      <div className="chat-head">
+        <div className="chat-title">Ask the Data</div>
+        <div className="chat-status">
+          {openAiConfigured ? (hasData ? "Using loaded metrics" : "Load metrics first") : "OpenAI key needed"}
+        </div>
+      </div>
+      <div className="chat-messages">
+        {messages.length === 0 ? (
+          <div className="chat-empty">
+            {hasData
+              ? "Ask about ratings, reviews, impressions, directions, calls, website clicks, or API errors for the selected market."
+              : "Run the dashboard for a market, then ask questions about the loaded metrics."}
+          </div>
+        ) : messages.map((m, i) => (
+          <div key={i} className={"chat-msg " + m.role}>{m.content}</div>
+        ))}
+      </div>
+      <div className="chat-input-row">
+        <input
+          className="chat-input"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") send(); }}
+          placeholder={openAiConfigured ? "Ask a question about this market's data..." : "Configure OpenAI in API Keys to chat..."}
+          disabled={!openAiConfigured || sending}
+        />
+        <button className="btn btn-run" onClick={send} disabled={!openAiConfigured || sending || !draft.trim()}>
+          {sending ? <><div className="spinner" />Asking...</> : "Send"}
+        </button>
       </div>
     </div>
   );
 }
 
 /* ── Dashboard Tab ── */
-function DashboardTab({ savedMarkets, selectedMarket, setSelectedMarket, onRun, onGoToSettings, loading, hasData, fetchedAt, data, apiErrors }) {
+function DashboardTab({ savedMarkets, selectedMarket, setSelectedMarket, onRun, onGoToSettings, loading, hasData, fetchedAt, data, apiErrors, openAiConfigured }) {
   const configuredMarketDefs = MARKETS.filter(m => savedMarkets.includes(m.code));
   const activeMarket = MARKETS.find(m => m.code === selectedMarket);
 
@@ -548,6 +656,14 @@ function DashboardTab({ savedMarkets, selectedMarket, setSelectedMarket, onRun, 
           {fetchedAt && <span style={{fontSize:12,color:"var(--txt3)",marginLeft:4}}>Updated {fetchedAt.toLocaleTimeString()}</span>}
         </div>
       </div>
+
+      <ChatPanel
+        selectedMarket={selectedMarket}
+        hasData={hasData}
+        openAiConfigured={openAiConfigured}
+        data={data}
+        apiErrors={apiErrors}
+      />
 
       {/* Empty state */}
       {!hasData && !loading && (
@@ -602,9 +718,12 @@ function App() {
 
   const [activeTab,      setActiveTab]      = useState("dashboard");
   const [localKeys,      setLocalKeys]      = useState(initKeys);
+  const [openAiKey,      setOpenAiKey]      = useState("");
+  const [openAiConfigured, setOpenAiConfigured] = useState(false);
   const [savedMarkets,   setSavedMarkets]   = useState([]);
   const [selectedMarket, setSelectedMarket] = useState(null);
   const [saving,         setSaving]         = useState(false);
+  const [savingOpenAi,   setSavingOpenAi]   = useState(false);
   const [data,           setData]           = useState({});
   const [apiErrors,      setApiErrors]      = useState({});
   const [loading,        setLoading]        = useState(false);
@@ -613,6 +732,19 @@ function App() {
   const [toast,          setToast]          = useState(null);
 
   const notify = (msg, type) => setToast({ msg, type: type || "ok", id: Date.now() });
+
+  useEffect(() => {
+    fetch(API + "/api/health")
+      .then(r => r.json())
+      .then(json => {
+        setSavedMarkets(json.configured_markets || []);
+        setOpenAiConfigured(!!json.openai_configured);
+        if (!selectedMarket && (json.configured_markets || []).length > 0) {
+          setSelectedMarket(json.configured_markets[0]);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     setData({}); setApiErrors({}); setHasData(false); setFetchedAt(null);
@@ -642,6 +774,26 @@ function App() {
       setSaving(false);
     }
   }, [localKeys, selectedMarket]);
+
+  const saveOpenAi = useCallback(async () => {
+    const key = openAiKey.trim();
+    if (!key) { notify("Enter an OpenAI key.", "err"); return; }
+    setSavingOpenAi(true);
+    try {
+      const r = await fetch(API + "/api/set-openai-key", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ openai_key: key }),
+      });
+      if (!r.ok) throw new Error("Backend error");
+      setOpenAiConfigured(true);
+      setOpenAiKey("");
+      notify("OpenAI key saved for chat.", "ok");
+    } catch (e) {
+      notify("Cannot save OpenAI key. Is the backend running?", "err");
+    } finally {
+      setSavingOpenAi(false);
+    }
+  }, [openAiKey]);
 
   const run = useCallback(async () => {
     if (!selectedMarket) { notify("Select a market first.", "err"); return; }
@@ -709,6 +861,11 @@ function App() {
             savedMarkets={savedMarkets}
             onSave={saveKeys}
             saving={saving}
+            openAiKey={openAiKey}
+            setOpenAiKey={setOpenAiKey}
+            openAiConfigured={openAiConfigured}
+            onSaveOpenAi={saveOpenAi}
+            savingOpenAi={savingOpenAi}
           />
         )}
         {activeTab === "dashboard" && (
@@ -723,6 +880,7 @@ function App() {
             fetchedAt={fetchedAt}
             data={data}
             apiErrors={apiErrors}
+            openAiConfigured={openAiConfigured}
           />
         )}
       </main>

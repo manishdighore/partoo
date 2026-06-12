@@ -24,6 +24,7 @@ CORS(app)
 
 # market_code -> api_key   e.g. {"DK": "abc123", "FR": "xyz456"}
 api_keys = {}
+openai_api_key = os.environ.get("OPENAI_API_KEY", "").strip()
 
 
 @app.route("/")
@@ -50,9 +51,26 @@ def set_keys():
     return jsonify({"success": True, "saved": saved, "configured": list(api_keys.keys())})
 
 
+@app.route("/api/set-openai-key", methods=["POST"])
+def set_openai_key():
+    """Save an OpenAI key for data chat. Body: {"openai_key": "..."}"""
+    global openai_api_key
+    data = request.get_json(force=True)
+    key = (data.get("openai_key") or "").strip()
+    if not key:
+        return jsonify({"success": False, "message": "Provide a non-empty openai_key"}), 400
+    openai_api_key = key
+    log.info("Saved OpenAI key for data chat")
+    return jsonify({"success": True, "configured": bool(openai_api_key)})
+
+
 @app.route("/api/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok", "configured_markets": list(api_keys.keys())})
+    return jsonify({
+        "status": "ok",
+        "configured_markets": list(api_keys.keys()),
+        "openai_configured": bool(openai_api_key),
+    })
 
 
 REVIEW_METRICS = ["average_rating", "reviews_count", "reply_time"]
@@ -138,6 +156,19 @@ def extract_metric_value(payload, metric_name):
 
     log.warning("     extract: FAILED for %r -- payload: %s", metric_name, json.dumps(payload)[:400])
     return None
+
+
+def summarize_chat_metrics(metrics):
+    lines = []
+    for name in REVIEW_METRICS + PRESENCE_METRICS:
+        row = metrics.get(name) if isinstance(metrics, dict) else None
+        if not isinstance(row, dict):
+            continue
+        value = row.get("value")
+        if isinstance(value, dict):
+            value = json.dumps(value, sort_keys=True)
+        lines.append("{}: {}".format(name, value))
+    return "\n".join(lines) if lines else "No metrics have been loaded yet."
 
 
 def fetch_single_metric(metric_type, metric_name, headers):
@@ -249,6 +280,68 @@ def get_metrics():
     log.info("=" * 60)
 
     return jsonify({"market": market, "metrics": results, "errors": errors})
+
+
+@app.route("/api/chat", methods=["POST"])
+def chat_with_data():
+    if not openai_api_key:
+        return jsonify({
+            "error": "No OpenAI API key configured. Set OPENAI_API_KEY or save one in API Keys."
+        }), 400
+
+    data = request.get_json(force=True)
+    message = (data.get("message") or "").strip()
+    if not message:
+        return jsonify({"error": "Provide a non-empty message"}), 400
+
+    market = (data.get("market") or "").upper()
+    metrics = data.get("metrics") or {}
+    errors = data.get("errors") or {}
+    history = data.get("history") or []
+
+    system = (
+        "You are a concise Partoo analytics assistant. Answer only from the dashboard "
+        "metrics supplied in the user message. If the data is missing, say what should "
+        "be loaded first. Use plain business language and cite metric names when useful."
+    )
+    context = {
+        "market": market or "not selected",
+        "metrics_summary": summarize_chat_metrics(metrics),
+        "api_errors": errors,
+    }
+
+    messages = [{"role": "system", "content": system}]
+    for h in history[-8:]:
+        role = h.get("role", "user")
+        if role in ("user", "assistant"):
+            messages.append({"role": role, "content": h.get("content", "")})
+    messages.append({
+        "role": "user",
+        "content": "Dashboard context:\n{}\n\nQuestion: {}".format(json.dumps(context, indent=2), message),
+    })
+
+    try:
+        resp = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": "Bearer {}".format(openai_api_key),
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": os.environ.get("OPENAI_MODEL", "gpt-4o"),
+                "messages": messages,
+                "temperature": 0.2,
+                "max_tokens": 600,
+            },
+            timeout=30,
+        )
+        if not resp.ok:
+            return jsonify({"error": "OpenAI error {}: {}".format(resp.status_code, resp.text[:300])}), 502
+        answer = resp.json()["choices"][0]["message"]["content"]
+        return jsonify({"answer": answer})
+    except Exception as exc:
+        log.exception("Chat failed")
+        return jsonify({"error": str(exc)}), 500
 
 
 if __name__ == "__main__":
