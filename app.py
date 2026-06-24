@@ -10,6 +10,9 @@ import concurrent.futures
 import os
 import json
 import logging
+import re
+from collections import Counter
+from datetime import date, datetime, timedelta
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -73,7 +76,23 @@ def health():
     })
 
 
-REVIEW_METRICS = ["average_rating", "reviews_count", "reply_time"]
+API_BASE = "https://api.partoo.co/v2"
+DEFAULT_WINDOW_DAYS = 30
+PRESENCE_DATA_LAG_DAYS = 5
+MAX_REVIEW_PAGES = 10
+THEME_STOPWORDS = {
+    "about", "after", "again", "also", "avec", "been", "bien", "but", "can", "chez",
+    "con", "dans", "del", "des", "did", "die", "does", "for", "from", "get", "got",
+    "had", "has", "have", "het", "his", "how", "ich", "ils", "into", "ist", "les",
+    "mais", "mon", "muy", "nicht", "not", "nous", "our", "out", "pas", "plus",
+    "pour", "que", "qui", "she", "son", "sur", "the", "their", "them", "then",
+    "there", "they", "this", "too", "tout", "très", "und", "une", "very", "was",
+    "werden", "were", "with", "you", "your", "zijn", "and", "are", "auf", "der",
+    "ein", "est", "las", "los", "of", "to", "in", "is", "it", "a", "an", "i",
+    "le", "la", "el", "en", "et", "de", "du", "un", "se", "me", "my", "we",
+}
+
+REVIEW_METRICS = ["average_rating", "reviews_count", "reply_time", "rating_distribution"]
 
 PRESENCE_METRICS = [
     "business_impressions_desktop_maps",
@@ -171,11 +190,85 @@ def summarize_chat_metrics(metrics):
     return "\n".join(lines) if lines else "No metrics have been loaded yet."
 
 
-def fetch_single_metric(metric_type, metric_name, headers):
-    url = "https://api.partoo.co/v2/{}/metrics?metrics={}".format(metric_type, metric_name)
-    log.info("-->  GET  %s", url)
+def add_date_filters(params, start, end, metric_type):
+    params = dict(params or {})
+    if metric_type == "presence_analytics":
+        params["filter_date__gte"] = "{}T00:00:00".format(start.isoformat())
+        params["filter_date__lte"] = "{}T23:59:59".format(end.isoformat())
+    else:
+        params["update_date__gte"] = "{}T00:00:00".format(start.isoformat())
+        params["update_date__lte"] = "{}T23:59:59".format(end.isoformat())
+    return params
+
+
+def parse_period_args(args):
+    window = (args.get("window") or "30d").lower()
+    today = date.today()
+    if window == "7d":
+        days = 7
+        end = today
+        start = end - timedelta(days=days - 1)
+        label = "Last 7 days"
+    elif window == "custom":
+        start_raw = args.get("start")
+        end_raw = args.get("end")
+        try:
+            start = datetime.strptime(start_raw, "%Y-%m-%d").date()
+            end = datetime.strptime(end_raw, "%Y-%m-%d").date()
+        except Exception:
+            raise ValueError("Custom window needs start and end as YYYY-MM-DD")
+        if start > end:
+            raise ValueError("Custom start date must be before end date")
+        days = (end - start).days + 1
+        label = "{} to {}".format(start.isoformat(), end.isoformat())
+    else:
+        window = "30d"
+        days = DEFAULT_WINDOW_DAYS
+        end = today
+        start = end - timedelta(days=days - 1)
+        label = "Last 30 days"
+
+    prev_end = start - timedelta(days=1)
+    prev_start = prev_end - timedelta(days=days - 1)
+    reliable_presence_end = min(end, today - timedelta(days=PRESENCE_DATA_LAG_DAYS))
+    reliable_presence_start = reliable_presence_end - timedelta(days=days - 1)
+
+    return {
+        "window": window,
+        "label": label,
+        "days": days,
+        "start": start,
+        "end": end,
+        "previous_start": prev_start,
+        "previous_end": prev_end,
+        "presence_start": reliable_presence_start,
+        "presence_end": reliable_presence_end,
+        "presence_lag_days": PRESENCE_DATA_LAG_DAYS,
+    }
+
+
+def serialize_period(period):
+    return {
+        "window": period["window"],
+        "label": period["label"],
+        "days": period["days"],
+        "start": period["start"].isoformat(),
+        "end": period["end"].isoformat(),
+        "previous_start": period["previous_start"].isoformat(),
+        "previous_end": period["previous_end"].isoformat(),
+        "presence_start": period["presence_start"].isoformat(),
+        "presence_end": period["presence_end"].isoformat(),
+        "presence_lag_days": period["presence_lag_days"],
+    }
+
+
+def fetch_single_metric(metric_type, metric_name, headers, params=None):
+    url = "{}/{}/metrics".format(API_BASE, metric_type)
+    req_params = dict(params or {})
+    req_params["metrics"] = metric_name
+    log.info("-->  GET  %s  params=%s", url, req_params)
     try:
-        resp = requests.get(url, headers=headers, timeout=15)
+        resp = requests.get(url, headers=headers, params=req_params, timeout=15)
 
         try:
             body = resp.json()
@@ -208,6 +301,256 @@ def fetch_single_metric(metric_type, metric_name, headers):
         return metric_name, None, str(exc)
 
 
+def fetch_metrics_batch(metric_type, metric_names, headers, start=None, end=None, dimensions=None):
+    params = {"metrics": ",".join(metric_names)}
+    if dimensions:
+        params["dimensions"] = dimensions
+    if start and end:
+        params = add_date_filters(params, start, end, metric_type)
+
+    url = "{}/{}/metrics".format(API_BASE, metric_type)
+    log.info("-->  GET batch %s  params=%s", url, params)
+    try:
+        resp = requests.get(url, headers=headers, params=params, timeout=20)
+        try:
+            body = resp.json()
+            body_str = json.dumps(body, indent=2)
+        except Exception:
+            body = None
+            body_str = resp.text
+        log.info("<-- batch [%s] HTTP %d", metric_type, resp.status_code)
+        log.debug("     RAW RESPONSE:\n%s", body_str)
+        resp.raise_for_status()
+
+        if dimensions:
+            return {"raw": body, "rows": normalize_dimension_rows(body, metric_names)}, None
+
+        metrics = {}
+        for name in metric_names:
+            metrics[name] = {"value": extract_metric_value(body, name), "raw": body}
+        return metrics, None
+    except requests.exceptions.HTTPError as exc:
+        error_body = getattr(exc.response, "text", str(exc))
+        return None, "HTTP {}: {}".format(exc.response.status_code, error_body)
+    except Exception as exc:
+        return None, str(exc)
+
+
+def normalize_dimension_rows(payload, metric_names):
+    rows = []
+    raw_rows = payload.get("data") if isinstance(payload, dict) else None
+    if raw_rows is None and isinstance(payload, dict):
+        raw_rows = payload.get("metrics")
+    if not isinstance(raw_rows, list):
+        return rows
+    for row in raw_rows:
+        if not isinstance(row, dict):
+            continue
+        metrics_obj = row.get("metrics") if isinstance(row.get("metrics"), dict) else row
+        values = {}
+        for name in metric_names:
+            v = metrics_obj.get(name) if isinstance(metrics_obj, dict) else None
+            if isinstance(v, (int, float, dict)):
+                values[name] = v
+        rows.append({
+            "dimension": row.get("dimension") or row.get("date"),
+            "dimension_name": row.get("dimension_name") or row.get("filter_date") or row.get("date"),
+            "metrics": values,
+        })
+    return rows
+
+
+def fetch_period_metrics(headers, period):
+    results = {}
+    errors = {}
+
+    review_data, review_error = fetch_metrics_batch(
+        "review_analytics",
+        REVIEW_METRICS,
+        headers,
+        period["start"],
+        period["end"],
+    )
+    if review_error:
+        for name in REVIEW_METRICS:
+            errors[name] = review_error
+    else:
+        results.update(review_data)
+
+    presence_data, presence_error = fetch_metrics_batch(
+        "presence_analytics",
+        PRESENCE_METRICS,
+        headers,
+        period["presence_start"],
+        period["presence_end"],
+    )
+    if presence_error:
+        for name in PRESENCE_METRICS:
+            errors[name] = presence_error
+    else:
+        results.update(presence_data)
+
+    return results, errors
+
+
+def compute_response_rate(reply_time):
+    if not isinstance(reply_time, dict):
+        return None
+    total = reply_time.get("total") or 0
+    if total <= 0:
+        return None
+    return round(((reply_time.get("fast") or 0) + (reply_time.get("slow") or 0)) / total * 100, 2)
+
+
+def compute_ctr(metrics):
+    def value(name):
+        row = metrics.get(name) if isinstance(metrics, dict) else None
+        return row.get("value") if isinstance(row, dict) and isinstance(row.get("value"), (int, float)) else 0
+
+    maps = value("business_impressions_desktop_maps") + value("business_impressions_mobile_maps")
+    search = value("business_impressions_desktop_search") + value("business_impressions_mobile_search")
+    total_impressions = maps + search
+    website = value("website_clicks")
+    calls = value("call_clicks")
+    directions = value("business_direction_requests")
+    return {
+        "website_from_search": round(website / search * 100, 2) if search else None,
+        "calls_from_search": round(calls / search * 100, 2) if search else None,
+        "directions_from_maps": round(directions / maps * 100, 2) if maps else None,
+        "all_actions_from_all_impressions": round((website + calls + directions) / total_impressions * 100, 2) if total_impressions else None,
+        "search_impressions": search,
+        "map_impressions": maps,
+        "total_impressions": total_impressions,
+    }
+
+
+def fetch_review_rows(headers, params, max_pages=MAX_REVIEW_PAGES):
+    reviews = []
+    errors = []
+    count = None
+    for page in range(1, max_pages + 1):
+        req_params = dict(params)
+        req_params.update({"page": page, "per_page": 100})
+        try:
+            resp = requests.get("{}/reviews".format(API_BASE), headers=headers, params=req_params, timeout=20)
+            body = resp.json()
+            resp.raise_for_status()
+            if count is None:
+                count = body.get("count")
+            rows = body.get("reviews") or []
+            if isinstance(rows, list):
+                reviews.extend(rows)
+            max_page = body.get("max_page") or page
+            if page >= max_page:
+                break
+        except Exception as exc:
+            errors.append(str(exc))
+            break
+    return reviews, count, errors
+
+
+def parse_review_date(row):
+    raw = row.get("date") or row.get("update_date")
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).date()
+    except Exception:
+        return None
+
+
+def build_review_insights(headers, period):
+    today = date.today()
+    unanswered, unanswered_count, unanswered_errors = fetch_review_rows(headers, {
+        "state__in": "not_treated",
+        "order_by": "-update_date",
+    })
+
+    aging = {"lt_7": 0, "days_7_30": 0, "days_30_plus": 0, "unknown": 0}
+    oldest_days = None
+    for row in unanswered:
+        review_date = parse_review_date(row)
+        if not review_date:
+            aging["unknown"] += 1
+            continue
+        age = (today - review_date).days
+        oldest_days = age if oldest_days is None else max(oldest_days, age)
+        if age < 7:
+            aging["lt_7"] += 1
+        elif age <= 30:
+            aging["days_7_30"] += 1
+        else:
+            aging["days_30_plus"] += 1
+
+    recent_reviews, recent_count, theme_errors = fetch_review_rows(headers, {
+        "content__isnull": "false",
+        "update_date__gte": "{}T00:00:00".format(period["start"].isoformat()),
+        "update_date__lte": "{}T23:59:59".format(period["end"].isoformat()),
+        "order_by": "-update_date",
+    }, max_pages=5)
+
+    themes = extract_review_themes(recent_reviews)
+    return {
+        "unanswered_aging": {
+            "buckets": aging,
+            "total_loaded": len(unanswered),
+            "api_count": unanswered_count,
+            "oldest_days": oldest_days,
+            "truncated": unanswered_count is not None and unanswered_count > len(unanswered),
+            "errors": unanswered_errors,
+        },
+        "themes": {
+            "items": themes,
+            "reviews_loaded": len(recent_reviews),
+            "api_count": recent_count,
+            "truncated": recent_count is not None and recent_count > len(recent_reviews),
+            "errors": theme_errors,
+        },
+    }
+
+
+def extract_review_themes(reviews):
+    words = Counter()
+    phrases = Counter()
+    tag_counts = Counter()
+    for row in reviews:
+        for tag in row.get("tags") or []:
+            label = tag.get("label") if isinstance(tag, dict) else None
+            if label:
+                tag_counts[label.lower()] += 1
+        content = (row.get("content") or "").lower()
+        tokens = [t for t in re.findall(r"[a-zA-ZÀ-ÿ]{3,}", content) if t not in THEME_STOPWORDS]
+        words.update(tokens)
+        phrases.update(" ".join(pair) for pair in zip(tokens, tokens[1:]))
+
+    items = []
+    for label, count in tag_counts.most_common(8):
+        items.append({"label": label, "count": count, "source": "tag"})
+    for label, count in phrases.most_common(10):
+        if count > 1 and label not in {i["label"] for i in items}:
+            items.append({"label": label, "count": count, "source": "phrase"})
+    for label, count in words.most_common(12):
+        if label not in {i["label"] for i in items}:
+            items.append({"label": label, "count": count, "source": "keyword"})
+    return items[:12]
+
+
+def build_trends(headers, period):
+    start = period["end"] - timedelta(days=185)
+    review_trend, review_error = fetch_metrics_batch(
+        "review_analytics",
+        ["average_rating", "reviews_count"],
+        headers,
+        start,
+        period["end"],
+        dimensions="month",
+    )
+    return {
+        "reviews": review_trend if review_trend else None,
+        "errors": {"reviews": review_error} if review_error else {},
+    }
+
+
 @app.route("/api/debug/<metric_type>/<metric_name>", methods=["GET"])
 def debug_metric(metric_type, metric_name):
     """Hit /api/debug/presence_analytics/business_impressions_desktop_maps?market=DK"""
@@ -217,10 +560,10 @@ def debug_metric(metric_type, metric_name):
         return jsonify({"error": "No API key for market: {}".format(market or "(none)")}), 401
 
     headers = {"x-APIKey": api_key}
-    url = "https://api.partoo.co/v2/{}/metrics?metrics={}".format(metric_type, metric_name)
+    url = "{}/{}/metrics".format(API_BASE, metric_type)
 
     try:
-        resp = requests.get(url, headers=headers, timeout=15)
+        resp = requests.get(url, headers=headers, params={"metrics": metric_name}, timeout=15)
         body = resp.json()
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
@@ -244,42 +587,112 @@ def get_metrics():
     if not api_key:
         return jsonify({"error": "No API key for market: {}. Save keys first.".format(market or "(none)")}), 401
 
+    try:
+        period = parse_period_args(request.args)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
     headers = {"x-APIKey": api_key}
-    tasks = (
-        [("review_analytics", m) for m in REVIEW_METRICS]
-        + [("presence_analytics", m) for m in PRESENCE_METRICS]
-    )
-
     log.info("=" * 60)
-    log.info("Market: %s  --  Fetching %d metrics in parallel ...", market, len(tasks))
+    log.info("Market: %s -- Fetching dashboard metrics for %s", market, period["label"])
     log.info("=" * 60)
 
-    results = {}
-    errors = {}
+    current_results, current_errors = fetch_period_metrics(headers, period)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(tasks)) as executor:
-        futures = {
-            executor.submit(fetch_single_metric, mt, mn, headers): (mt, mn)
-            for mt, mn in tasks
-        }
-        for future in concurrent.futures.as_completed(futures):
-            metric_name, data, error = future.result()
-            if error:
-                errors[metric_name] = error
-            else:
-                results[metric_name] = data
+    previous_period = dict(period)
+    previous_period["start"] = period["previous_start"]
+    previous_period["end"] = period["previous_end"]
+    previous_period["presence_end"] = period["presence_start"] - timedelta(days=1)
+    previous_period["presence_start"] = previous_period["presence_end"] - timedelta(days=period["days"] - 1)
+    previous_results, previous_errors = fetch_period_metrics(headers, previous_period)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        insights_future = executor.submit(build_review_insights, headers, period)
+        trends_future = executor.submit(build_trends, headers, period)
+        review_insights = insights_future.result()
+        trends = trends_future.result()
+
+    derived = {
+        "response_rate": {
+            "value": compute_response_rate((current_results.get("reply_time") or {}).get("value")),
+            "previous_value": compute_response_rate((previous_results.get("reply_time") or {}).get("value")),
+        },
+        "presence_ctr": compute_ctr(current_results),
+        "previous_presence_ctr": compute_ctr(previous_results),
+    }
+
+    errors = dict(current_errors)
+    for name, msg in previous_errors.items():
+        errors["previous_{}".format(name)] = msg
+    errors.update({"trend_{}".format(k): v for k, v in trends.get("errors", {}).items()})
 
     log.info("=" * 60)
     log.info("SUMMARY [%s]:", market)
-    for name in sorted(results):
-        log.info("  %-52s  value = %s", name, results[name].get("value"))
+    for name in sorted(current_results):
+        log.info("  %-52s  value = %s", name, current_results[name].get("value"))
     if errors:
         log.error("ERRORS:")
         for name, msg in errors.items():
             log.error("  %s -- %s", name, msg)
     log.info("=" * 60)
 
-    return jsonify({"market": market, "metrics": results, "errors": errors})
+    return jsonify({
+        "market": market,
+        "period": serialize_period(period),
+        "metrics": current_results,
+        "previous_metrics": previous_results,
+        "derived": derived,
+        "review_insights": review_insights,
+        "trends": trends,
+        "errors": errors,
+    })
+
+
+@app.route("/api/markets/summary", methods=["GET"])
+def get_markets_summary():
+    try:
+        period = parse_period_args(request.args)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    configured = sorted(api_keys.items())
+    if not configured:
+        return jsonify({"markets": [], "period": serialize_period(period), "errors": {}})
+
+    def fetch_market_summary(item):
+        market, api_key = item
+        headers = {"x-APIKey": api_key}
+        metrics, errors = fetch_period_metrics(headers, period)
+        reply_time = (metrics.get("reply_time") or {}).get("value")
+        ctr = compute_ctr(metrics)
+        return market, {
+            "market": market,
+            "average_rating": (metrics.get("average_rating") or {}).get("value"),
+            "reviews_count": (metrics.get("reviews_count") or {}).get("value"),
+            "response_rate": compute_response_rate(reply_time),
+            "website_ctr": ctr.get("website_from_search"),
+            "actions_ctr": ctr.get("all_actions_from_all_impressions"),
+            "search_impressions": ctr.get("search_impressions"),
+            "total_impressions": ctr.get("total_impressions"),
+            "errors": errors,
+        }
+
+    summaries = []
+    errors = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(configured), 6)) as executor:
+        futures = [executor.submit(fetch_market_summary, item) for item in configured]
+        for future in concurrent.futures.as_completed(futures):
+            market, summary = future.result()
+            summaries.append(summary)
+            if summary["errors"]:
+                errors[market] = summary["errors"]
+
+    summaries.sort(key=lambda row: (row.get("response_rate") is None, -(row.get("response_rate") or 0)))
+    return jsonify({
+        "period": serialize_period(period),
+        "markets": summaries,
+        "errors": errors,
+    })
 
 
 @app.route("/api/chat", methods=["POST"])

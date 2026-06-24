@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Partoo Analytics Dashboard</title>
+  <link rel="icon" href="data:," />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
@@ -140,6 +141,11 @@
     .card-label { font-size: 11px; font-weight: 600; color: var(--txt3); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 10px; }
     .card-value { font-size: 38px; font-weight: 900; line-height: 1; margin-bottom: 6px; background: var(--card-accent); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; animation: fadeUp .45s ease both; }
     .card-unit { font-size: 12px; color: var(--txt3); margin-top: 4px; }
+    .delta { display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; padding: 5px 8px; border-radius: 8px; font-size: 11px; font-weight: 700; border: 1px solid; }
+    .delta-up { color: #34d399; background: rgba(16,185,129,.1); border-color: rgba(16,185,129,.25); }
+    .delta-down { color: #fb7185; background: rgba(244,63,94,.1); border-color: rgba(244,63,94,.25); }
+    .delta-flat { color: var(--txt3); background: rgba(255,255,255,.04); border-color: var(--border); }
+    .delta-sub { display: block; margin-top: 5px; color: var(--txt3); font-size: 11px; }
     @keyframes fadeUp { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
 
     .stars { display: flex; gap: 3px; margin-bottom: 8px; }
@@ -166,6 +172,43 @@
     .rt-bar { height: 7px; border-radius: 999px; overflow: hidden; display: flex; gap: 3px; }
     .rt-bar-seg { border-radius: 999px; min-width: 4px; }
     .rt-card-mb { margin-bottom: 32px; }
+
+    .period-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-left: auto; }
+    .seg { display: inline-flex; padding: 3px; border-radius: 10px; background: rgba(255,255,255,.04); border: 1px solid var(--border); }
+    .seg button { border: 0; background: transparent; color: var(--txt3); padding: 7px 11px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif; }
+    .seg button.active { color: #c4b5fd; background: rgba(99,102,241,.2); }
+    .date-input { background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; color: var(--txt2); font-size: 12px; font-family: 'Inter', sans-serif; }
+    .period-note { width: 100%; color: var(--txt3); font-size: 12px; padding: 0 24px 14px; }
+
+    .insight-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 16px; margin-bottom: 24px; }
+    .insight-grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 24px; }
+    @media(max-width:900px){ .insight-grid, .insight-grid-3 { grid-template-columns: 1fr; } }
+    .mini-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; overflow: hidden; }
+    .mini-title { font-size: 13px; font-weight: 800; color: var(--txt); margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .mini-sub { color: var(--txt3); font-size: 11px; font-weight: 600; }
+    .dist-row { display: grid; grid-template-columns: 38px 1fr 48px; gap: 10px; align-items: center; margin: 9px 0; }
+    .dist-star { color: #f59e0b; font-size: 12px; font-weight: 800; }
+    .dist-track { height: 9px; border-radius: 999px; background: rgba(255,255,255,.06); overflow: hidden; }
+    .dist-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg,#f59e0b,#f97316); }
+    .dist-val { font-size: 12px; color: var(--txt2); text-align: right; }
+    .aging-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+    .aging-bucket { padding: 13px; border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,.03); }
+    .aging-bucket.alert { border-color: rgba(244,63,94,.3); background: rgba(244,63,94,.08); }
+    .aging-label { font-size: 11px; color: var(--txt3); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+    .aging-val { font-size: 28px; font-weight: 900; margin-top: 6px; }
+    .theme-list { display: flex; flex-wrap: wrap; gap: 8px; }
+    .theme-chip { border: 1px solid rgba(99,102,241,.22); background: rgba(99,102,241,.1); color: #c4b5fd; border-radius: 999px; padding: 7px 10px; font-size: 12px; font-weight: 700; }
+    .funnel-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+    .funnel-row:last-child { border-bottom: 0; }
+    .funnel-name { font-size: 12px; color: var(--txt2); font-weight: 700; }
+    .funnel-math { color: var(--txt3); font-size: 11px; margin-top: 3px; }
+    .funnel-rate { font-size: 24px; font-weight: 900; color: #34d399; }
+    .sparkline { height: 82px; }
+    .market-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .market-table th, .market-table td { padding: 11px 10px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+    .market-table th:first-child, .market-table td:first-child { text-align: left; }
+    .market-table th { color: var(--txt3); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+    .rank { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 7px; margin-right: 8px; background: rgba(99,102,241,.16); color: #a5b4fc; font-size: 11px; font-weight: 800; }
 
     /* ── Chart ── */
     .chart-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-top: 4px; }
@@ -253,7 +296,7 @@ const MARKETS = [
 
 const REVIEW_METRICS = [
   { key: "average_rating", label: "Average Rating", icon: "&#11088;", accent: "linear-gradient(135deg,#f59e0b,#f97316)", iconBg: "rgba(245,158,11,.15)", type: "rating" },
-  { key: "reviews_count",  label: "Total Reviews",  icon: "&#128172;", accent: "linear-gradient(135deg,#f43f5e,#ec4899)", iconBg: "rgba(244,63,94,.15)", unit: "reviews" },
+  { key: "reviews_count",  label: "Reviews This Period",  icon: "&#128172;", accent: "linear-gradient(135deg,#f43f5e,#ec4899)", iconBg: "rgba(244,63,94,.15)", unit: "new reviews" },
 ];
 const PRESENCE_METRICS = [
   { key: "business_impressions_desktop_maps",   label: "Desktop Maps",       icon: "&#128506;", color: "#6366f1", accent: "linear-gradient(135deg,#6366f1,#8b5cf6)", iconBg: "rgba(99,102,241,.15)"  },
@@ -312,6 +355,53 @@ function fmtNum(val, type) {
 function fmtCount(v) {
   if (v == null) return "--";
   return v >= 1000 ? (v / 1000).toFixed(1) + "K" : String(v);
+}
+function fmtPct(v) {
+  if (v === null || v === undefined || Number.isNaN(v)) return "--";
+  return v.toFixed(v >= 10 ? 1 : 2) + "%";
+}
+function deltaInfo(current, previous, type) {
+  if (current === null || current === undefined || previous === null || previous === undefined) return null;
+  const abs = current - previous;
+  const pct = previous !== 0 ? (abs / Math.abs(previous)) * 100 : null;
+  const flat = Math.abs(abs) < 0.005;
+  const sign = abs > 0 ? "+" : "";
+  const absLabel = type === "rating" ? sign + abs.toFixed(2) + " pts" : type === "pct" ? sign + abs.toFixed(1) + " pts" : sign + fmtNum(abs, null);
+  const pctLabel = pct === null ? null : sign + pct.toFixed(Math.abs(pct) >= 10 ? 1 : 2) + "%";
+  return { abs, pct, className: flat ? "delta-flat" : abs > 0 ? "delta-up" : "delta-down", label: absLabel, pctLabel };
+}
+function DeltaBadge({ current, previous, type }) {
+  const d = deltaInfo(current, previous, type);
+  if (!d) return <span className="delta-sub">No previous-period comparison</span>;
+  return (
+    <>
+      <div className={"delta " + d.className}>
+        <span>{d.abs > 0 ? "^" : d.abs < 0 ? "v" : "-"}</span>
+        <span>{d.label}{d.pctLabel ? " / " + d.pctLabel : ""}</span>
+      </div>
+      <span className="delta-sub">vs previous period</span>
+    </>
+  );
+}
+function getNestedMetric(obj, key) {
+  return obj && obj[key] ? obj[key] : null;
+}
+function normalizeDistribution(raw) {
+  const obj = extractObj(raw, "rating_distribution") || (raw && raw.value && typeof raw.value === "object" ? raw.value : null);
+  const pick = (star) => {
+    if (!obj) return 0;
+    const keys = [String(star), star + "_star", star + "_stars", "star_" + star, "rating_" + star, "rating_distribution__" + star];
+    for (const k of keys) {
+      const v = obj[k];
+      if (typeof v === "number") return v;
+      if (v && typeof v === "object") {
+        if (typeof v.count === "number") return v.count;
+        if (typeof v.value === "number") return v.value;
+      }
+    }
+    return 0;
+  };
+  return [1,2,3,4,5].map(star => ({ star, count: pick(star) }));
 }
 
 function StarRating({ value }) {
@@ -375,8 +465,9 @@ function ReplyTimeBreakdownCard({ raw, loading }) {
   );
 }
 
-function MetricCard({ def, raw, loading }) {
+function MetricCard({ def, raw, previousRaw, loading }) {
   const rawVal  = extractNum(raw, def.key);
+  const prevVal = extractNum(previousRaw, def.key);
   const display = rawVal !== null ? fmtNum(rawVal, def.type) : null;
   return (
     <div className="card" style={{"--card-accent":def.accent,"--card-icon-bg":def.iconBg}}>
@@ -385,7 +476,27 @@ function MetricCard({ def, raw, loading }) {
       {loading ? (
         <><div className="skel skel-val" /><div className="skel skel-lbl" style={{marginTop:8}} /></>
       ) : display !== null ? (
-        <>{def.type === "rating" && <StarRating value={rawVal} />}<div className="card-value">{display}</div>{def.unit && <div className="card-unit">{def.unit}</div>}</>
+        <>{def.type === "rating" && <StarRating value={rawVal} />}<div className="card-value">{display}</div>{def.unit && <div className="card-unit">{def.unit}</div>}<DeltaBadge current={rawVal} previous={prevVal} type={def.type} /></>
+      ) : (
+        <><div className="card-value" style={{fontSize:28,color:"#475569",WebkitTextFillColor:"#475569"}}>--</div><div className="card-unit">No data</div></>
+      )}
+    </div>
+  );
+}
+
+function KpiCard({ label, value, previous, unit, icon, accent, iconBg, type, loading }) {
+  return (
+    <div className="card" style={{"--card-accent":accent,"--card-icon-bg":iconBg}}>
+      <div className="card-icon">{icon}</div>
+      <div className="card-label">{label}</div>
+      {loading ? (
+        <><div className="skel skel-val" /><div className="skel skel-lbl" style={{marginTop:8}} /></>
+      ) : value !== null && value !== undefined ? (
+        <>
+          <div className="card-value">{type === "pct" ? fmtPct(value) : fmtNum(value)}</div>
+          {unit && <div className="card-unit">{unit}</div>}
+          <DeltaBadge current={value} previous={previous} type={type} />
+        </>
       ) : (
         <><div className="card-value" style={{fontSize:28,color:"#475569",WebkitTextFillColor:"#475569"}}>--</div><div className="card-unit">No data</div></>
       )}
@@ -419,6 +530,145 @@ function PresenceChart({ metrics, metricsData }) {
     <div className="chart-wrap">
       <div className="chart-title">&#128202; Presence Metrics Overview</div>
       <div className="chart-inner"><canvas ref={canvasRef} /></div>
+    </div>
+  );
+}
+
+function RatingDistributionCard({ raw }) {
+  const dist = normalizeDistribution(raw);
+  const total = dist.reduce((sum, row) => sum + row.count, 0);
+  const max = Math.max(...dist.map(row => row.count), 1);
+  return (
+    <div className="mini-card">
+      <div className="mini-title">Rating Distribution <span className="mini-sub">{fmtCount(total)} ratings</span></div>
+      {dist.slice().reverse().map(row => (
+        <div key={row.star} className="dist-row">
+          <div className="dist-star">{row.star} star</div>
+          <div className="dist-track"><div className="dist-fill" style={{width:(row.count / max * 100) + "%"}} /></div>
+          <div className="dist-val">{fmtCount(row.count)}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AgingBucketsCard({ insights }) {
+  const aging = insights && insights.unanswered_aging;
+  const buckets = aging && aging.buckets ? aging.buckets : {};
+  return (
+    <div className="mini-card">
+      <div className="mini-title">
+        No Reply Aging
+        <span className="mini-sub">{aging && aging.api_count != null ? fmtCount(aging.api_count) + " total" : "loaded sample"}</span>
+      </div>
+      <div className="aging-grid">
+        <div className="aging-bucket">
+          <div className="aging-label">&lt; 7 days</div>
+          <div className="aging-val" style={{color:"#34d399"}}>{fmtCount(buckets.lt_7 || 0)}</div>
+        </div>
+        <div className="aging-bucket">
+          <div className="aging-label">7-30 days</div>
+          <div className="aging-val" style={{color:"#fbbf24"}}>{fmtCount(buckets.days_7_30 || 0)}</div>
+        </div>
+        <div className={"aging-bucket " + ((buckets.days_30_plus || 0) > 0 ? "alert" : "")}>
+          <div className="aging-label">30+ days</div>
+          <div className="aging-val" style={{color:"#fb7185"}}>{fmtCount(buckets.days_30_plus || 0)}</div>
+        </div>
+      </div>
+      {aging && aging.truncated && <div className="delta-sub">Bucketed from first {fmtCount(aging.total_loaded)} unanswered reviews; API count is higher.</div>}
+    </div>
+  );
+}
+
+function ThemesCard({ insights }) {
+  const themes = insights && insights.themes && insights.themes.items ? insights.themes.items : [];
+  return (
+    <div className="mini-card">
+      <div className="mini-title">
+        Review Themes
+        <span className="mini-sub">{insights && insights.themes ? fmtCount(insights.themes.reviews_loaded) + " reviews scanned" : "no scan"}</span>
+      </div>
+      {themes.length ? (
+        <div className="theme-list">
+          {themes.map(t => <span key={t.source + t.label} className="theme-chip">{t.label} · {t.count}</span>)}
+        </div>
+      ) : <div style={{color:"var(--txt3)",fontSize:13}}>No recurring text themes found for this period.</div>}
+    </div>
+  );
+}
+
+function PresenceFunnelCard({ ctr }) {
+  const rows = [
+    { label: "Website clicks / search impressions", rate: ctr ? ctr.website_from_search : null, math: fmtCount(ctr ? ctr.search_impressions : null) + " search impressions" },
+    { label: "Calls / search impressions", rate: ctr ? ctr.calls_from_search : null, math: fmtCount(ctr ? ctr.search_impressions : null) + " search impressions" },
+    { label: "Directions / map impressions", rate: ctr ? ctr.directions_from_maps : null, math: fmtCount(ctr ? ctr.map_impressions : null) + " map impressions" },
+    { label: "All actions / all impressions", rate: ctr ? ctr.all_actions_from_all_impressions : null, math: fmtCount(ctr ? ctr.total_impressions : null) + " total impressions" },
+  ];
+  return (
+    <div className="mini-card">
+      <div className="mini-title">Presence Funnel Conversion <span className="mini-sub">impressions to action</span></div>
+      {rows.map(row => (
+        <div key={row.label} className="funnel-row">
+          <div>
+            <div className="funnel-name">{row.label}</div>
+            <div className="funnel-math">{row.math}</div>
+          </div>
+          <div className="funnel-rate">{fmtPct(row.rate)}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SparklineCard({ title, rows, metric, color }) {
+  const canvasRef = useRef(null);
+  const chartRef = useRef(null);
+  const values = (rows || []).map(row => row.metrics && row.metrics[metric]).filter(v => typeof v === "number");
+  useEffect(() => {
+    if (!canvasRef.current || !values.length) return;
+    if (chartRef.current) chartRef.current.destroy();
+    const labels = (rows || []).map(row => row.dimension_name || row.dimension || "");
+    chartRef.current = new Chart(canvasRef.current.getContext("2d"), {
+      type: "line",
+      data: { labels, datasets: [{ data: values, borderColor: color, backgroundColor: color + "22", fill: true, tension: .35, pointRadius: 0, borderWidth: 2 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display:false }, tooltip: { backgroundColor:"rgba(10,18,40,.96)" } },
+        scales: { x: { display:false }, y: { display:false } },
+      },
+    });
+    return () => { if (chartRef.current) chartRef.current.destroy(); };
+  }, [JSON.stringify(values)]);
+  return (
+    <div className="mini-card">
+      <div className="mini-title">{title} <span className="mini-sub">6 months</span></div>
+      {values.length ? <div className="sparkline"><canvas ref={canvasRef} /></div> : <div style={{color:"var(--txt3)",fontSize:13}}>No trend data</div>}
+    </div>
+  );
+}
+
+function MarketComparison({ rows }) {
+  if (!rows || rows.length < 2) return null;
+  return (
+    <div className="mini-card" style={{marginBottom:24}}>
+      <div className="mini-title">Cross-Market Comparison <span className="mini-sub">ranked by response rate</span></div>
+      <div style={{overflowX:"auto"}}>
+        <table className="market-table">
+          <thead><tr><th>Market</th><th>Rating</th><th>Reviews</th><th>Response Rate</th><th>Website CTR</th><th>Actions CTR</th></tr></thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={row.market}>
+                <td><span className="rank">{i + 1}</span>{row.market}</td>
+                <td>{row.average_rating != null ? row.average_rating.toFixed(2) : "--"}</td>
+                <td>{fmtCount(row.reviews_count)}</td>
+                <td>{fmtPct(row.response_rate)}</td>
+                <td>{fmtPct(row.website_ctr)}</td>
+                <td>{fmtPct(row.actions_ctr)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -624,9 +874,10 @@ function ChatPanel({ selectedMarket, hasData, openAiConfigured, data, apiErrors 
 }
 
 /* ── Dashboard Tab ── */
-function DashboardTab({ savedMarkets, selectedMarket, setSelectedMarket, onRun, onGoToSettings, loading, hasData, fetchedAt, data, apiErrors, openAiConfigured }) {
+function DashboardTab({ savedMarkets, selectedMarket, setSelectedMarket, onRun, onGoToSettings, loading, hasData, fetchedAt, data, previousData, derived, reviewInsights, trends, marketSummary, apiErrors, openAiConfigured, periodWindow, setPeriodWindow, customStart, setCustomStart, customEnd, setCustomEnd, periodMeta }) {
   const configuredMarketDefs = MARKETS.filter(m => savedMarkets.includes(m.code));
   const activeMarket = MARKETS.find(m => m.code === selectedMarket);
+  const reviewTrendRows = trends && trends.reviews && trends.reviews.rows ? trends.reviews.rows : [];
 
   return (
     <>
@@ -646,7 +897,22 @@ function DashboardTab({ savedMarkets, selectedMarket, setSelectedMarket, onRun, 
               ))}
             </div>
           )}
+          <div className="period-controls">
+            <div className="market-selector-label">Window</div>
+            <div className="seg">
+              <button className={periodWindow === "7d" ? "active" : ""} onClick={() => setPeriodWindow("7d")}>7d</button>
+              <button className={periodWindow === "30d" ? "active" : ""} onClick={() => setPeriodWindow("30d")}>30d</button>
+              <button className={periodWindow === "custom" ? "active" : ""} onClick={() => setPeriodWindow("custom")}>Custom</button>
+            </div>
+            {periodWindow === "custom" && (
+              <>
+                <input className="date-input" type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} />
+                <input className="date-input" type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
+              </>
+            )}
+          </div>
         </div>
+        {periodMeta && <div className="period-note">Review metrics: {periodMeta.start} to {periodMeta.end}. Presence metrics use reliable Google data through {periodMeta.presence_end}.</div>}
         <div className="dash-divider" />
         <div className="dash-run-row">
           <button className="btn btn-run" onClick={onRun} disabled={loading || !selectedMarket}>
@@ -691,9 +957,45 @@ function DashboardTab({ savedMarkets, selectedMarket, setSelectedMarket, onRun, 
             <div className="sec-line" />
           </div>
           <div className="cards-2">
-            {REVIEW_METRICS.map(def => <MetricCard key={def.key} def={def} raw={data[def.key]} loading={loading} />)}
+            {REVIEW_METRICS.map(def => <MetricCard key={def.key} def={def} raw={data[def.key]} previousRaw={previousData[def.key]} loading={loading} />)}
+          </div>
+          <div className="cards-2">
+            <KpiCard
+              label="Response Rate"
+              value={derived && derived.response_rate ? derived.response_rate.value : null}
+              previous={derived && derived.response_rate ? derived.response_rate.previous_value : null}
+              unit="fast + slow replies / total"
+              icon="%"
+              type="pct"
+              accent="linear-gradient(135deg,#10b981,#06b6d4)"
+              iconBg="rgba(16,185,129,.15)"
+              loading={loading}
+            />
+            <KpiCard
+              label="New Reviews This Period"
+              value={extractNum(data.reviews_count, "reviews_count")}
+              previous={extractNum(previousData.reviews_count, "reviews_count")}
+              unit={periodMeta ? periodMeta.label : "selected window"}
+              icon="+"
+              accent="linear-gradient(135deg,#f43f5e,#ec4899)"
+              iconBg="rgba(244,63,94,.15)"
+              loading={loading}
+            />
           </div>
           <ReplyTimeBreakdownCard raw={data["reply_time"]} loading={loading} />
+          {hasData && !loading && (
+            <>
+              <div className="insight-grid">
+                <RatingDistributionCard raw={data["rating_distribution"]} />
+                <AgingBucketsCard insights={reviewInsights} />
+              </div>
+              <div className="insight-grid-3">
+                <ThemesCard insights={reviewInsights} />
+                <SparklineCard title="Rating Trend" rows={reviewTrendRows} metric="average_rating" color="#f59e0b" />
+                <SparklineCard title="Review Volume Trend" rows={reviewTrendRows} metric="reviews_count" color="#f43f5e" />
+              </div>
+            </>
+          )}
 
           <div className="sec-divider">
             <div className="sec-line" />
@@ -701,8 +1003,14 @@ function DashboardTab({ savedMarkets, selectedMarket, setSelectedMarket, onRun, 
             <div className="sec-line" />
           </div>
           <div className="cards-auto">
-            {PRESENCE_METRICS.map(def => <MetricCard key={def.key} def={def} raw={data[def.key]} loading={loading} />)}
+            {PRESENCE_METRICS.map(def => <MetricCard key={def.key} def={def} raw={data[def.key]} previousRaw={previousData[def.key]} loading={loading} />)}
           </div>
+          {hasData && !loading && (
+            <div className="insight-grid">
+              <PresenceFunnelCard ctr={derived && derived.presence_ctr} />
+              <MarketComparison rows={marketSummary} />
+            </div>
+          )}
           {hasData && !loading && <PresenceChart metrics={PRESENCE_METRICS} metricsData={data} />}
           {hasData && <DebugPanel metricsData={data} errors={apiErrors} />}
         </>
@@ -725,6 +1033,15 @@ function App() {
   const [saving,         setSaving]         = useState(false);
   const [savingOpenAi,   setSavingOpenAi]   = useState(false);
   const [data,           setData]           = useState({});
+  const [previousData,   setPreviousData]   = useState({});
+  const [derived,        setDerived]        = useState({});
+  const [reviewInsights, setReviewInsights] = useState({});
+  const [trends,         setTrends]         = useState({});
+  const [marketSummary,  setMarketSummary]  = useState([]);
+  const [periodMeta,     setPeriodMeta]     = useState(null);
+  const [periodWindow,   setPeriodWindow]   = useState("30d");
+  const [customStart,    setCustomStart]    = useState("");
+  const [customEnd,      setCustomEnd]      = useState("");
   const [apiErrors,      setApiErrors]      = useState({});
   const [loading,        setLoading]        = useState(false);
   const [hasData,        setHasData]        = useState(false);
@@ -747,7 +1064,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    setData({}); setApiErrors({}); setHasData(false); setFetchedAt(null);
+    setData({}); setPreviousData({}); setDerived({}); setReviewInsights({}); setTrends({}); setMarketSummary([]); setPeriodMeta(null); setApiErrors({}); setHasData(false); setFetchedAt(null);
   }, [selectedMarket]);
 
   const saveKeys = useCallback(async () => {
@@ -797,12 +1114,25 @@ function App() {
 
   const run = useCallback(async () => {
     if (!selectedMarket) { notify("Select a market first.", "err"); return; }
+    if (periodWindow === "custom" && (!customStart || !customEnd)) { notify("Pick both custom dates.", "err"); return; }
     setLoading(true);
     try {
-      const r = await fetch(API + "/api/metrics?market=" + selectedMarket);
+      const params = new URLSearchParams({ market: selectedMarket, window: periodWindow });
+      if (periodWindow === "custom") { params.set("start", customStart); params.set("end", customEnd); }
+      const r = await fetch(API + "/api/metrics?" + params.toString());
       if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || "HTTP " + r.status); }
       const json = await r.json();
-      setData(json.metrics || {}); setApiErrors(json.errors || {});
+      setData(json.metrics || {});
+      setPreviousData(json.previous_metrics || {});
+      setDerived(json.derived || {});
+      setReviewInsights(json.review_insights || {});
+      setTrends(json.trends || {});
+      setPeriodMeta(json.period || null);
+      setApiErrors(json.errors || {});
+      fetch(API + "/api/markets/summary?" + params.toString().replace("market=" + encodeURIComponent(selectedMarket) + "&", ""))
+        .then(res => res.ok ? res.json() : { markets: [] })
+        .then(summary => setMarketSummary(summary.markets || []))
+        .catch(() => setMarketSummary([]));
       setHasData(true); setFetchedAt(new Date());
       const errCount = Object.keys(json.errors || {}).length;
       notify(errCount > 0 ? selectedMarket + " loaded with " + errCount + " error(s)." : selectedMarket + " loaded!", errCount > 0 ? "err" : "ok");
@@ -811,7 +1141,7 @@ function App() {
     } finally {
       setLoading(false);
     }
-  }, [selectedMarket]);
+  }, [selectedMarket, periodWindow, customStart, customEnd]);
 
   const activeMarket = MARKETS.find(m => m.code === selectedMarket);
   const unsaved = savedMarkets.length === 0;
@@ -879,8 +1209,20 @@ function App() {
             hasData={hasData}
             fetchedAt={fetchedAt}
             data={data}
+            previousData={previousData}
+            derived={derived}
+            reviewInsights={reviewInsights}
+            trends={trends}
+            marketSummary={marketSummary}
             apiErrors={apiErrors}
             openAiConfigured={openAiConfigured}
+            periodWindow={periodWindow}
+            setPeriodWindow={setPeriodWindow}
+            customStart={customStart}
+            setCustomStart={setCustomStart}
+            customEnd={customEnd}
+            setCustomEnd={setCustomEnd}
+            periodMeta={periodMeta}
           />
         )}
       </main>
