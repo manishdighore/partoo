@@ -25,8 +25,55 @@ logging.getLogger("werkzeug").setLevel(logging.WARNING)
 app = Flask(__name__, static_folder=".")
 CORS(app)
 
+
+def load_local_env(path=".env"):
+    """Load simple KEY=value pairs for local development without an extra dependency."""
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+
+def load_partoo_keys_from_env():
+    raw_json = os.environ.get("PARTOO_API_KEYS", "").strip()
+    loaded = []
+    if raw_json:
+        try:
+            keys = json.loads(raw_json)
+            if isinstance(keys, dict):
+                for market, key in keys.items():
+                    key = (key or "").strip()
+                    if key:
+                        api_keys[str(market).upper()] = key
+                        loaded.append(str(market).upper())
+        except Exception as exc:
+            log.warning("Could not parse PARTOO_API_KEYS JSON: %s", exc)
+
+    for name, value in os.environ.items():
+        if not name.startswith("PARTOO_API_KEY_"):
+            continue
+        market = name.replace("PARTOO_API_KEY_", "", 1).upper()
+        key = (value or "").strip()
+        if market and key:
+            api_keys[market] = key
+            loaded.append(market)
+
+    if loaded:
+        log.info("Loaded Partoo API keys from environment for markets: %s", sorted(set(loaded)))
+
+
 # market_code -> api_key   e.g. {"DK": "abc123", "FR": "xyz456"}
 api_keys = {}
+load_local_env()
+load_partoo_keys_from_env()
 openai_api_key = os.environ.get("OPENAI_API_KEY", "").strip()
 
 
