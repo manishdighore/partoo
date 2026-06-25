@@ -296,7 +296,7 @@ const MARKETS = [
 
 const REVIEW_METRICS = [
   { key: "average_rating", label: "Average Rating", icon: "&#11088;", accent: "linear-gradient(135deg,#f59e0b,#f97316)", iconBg: "rgba(245,158,11,.15)", type: "rating" },
-  { key: "reviews_count",  label: "Reviews This Period",  icon: "&#128172;", accent: "linear-gradient(135deg,#f43f5e,#ec4899)", iconBg: "rgba(244,63,94,.15)", unit: "new reviews" },
+  { key: "reviews_count",  label: "Total Reviews",  icon: "&#128172;", accent: "linear-gradient(135deg,#f43f5e,#ec4899)", iconBg: "rgba(244,63,94,.15)", unit: "reviews" },
 ];
 const PRESENCE_METRICS = [
   { key: "business_impressions_desktop_maps",   label: "Desktop Maps",       icon: "&#128506;", color: "#6366f1", accent: "linear-gradient(135deg,#6366f1,#8b5cf6)", iconBg: "rgba(99,102,241,.15)"  },
@@ -465,9 +465,10 @@ function ReplyTimeBreakdownCard({ raw, loading }) {
   );
 }
 
-function MetricCard({ def, raw, previousRaw, loading }) {
+function MetricCard({ def, raw, deltaCurrentRaw, deltaPreviousRaw, loading }) {
   const rawVal  = extractNum(raw, def.key);
-  const prevVal = extractNum(previousRaw, def.key);
+  const deltaCurrentVal = extractNum(deltaCurrentRaw, def.key);
+  const deltaPreviousVal = extractNum(deltaPreviousRaw, def.key);
   const display = rawVal !== null ? fmtNum(rawVal, def.type) : null;
   return (
     <div className="card" style={{"--card-accent":def.accent,"--card-icon-bg":def.iconBg}}>
@@ -476,7 +477,7 @@ function MetricCard({ def, raw, previousRaw, loading }) {
       {loading ? (
         <><div className="skel skel-val" /><div className="skel skel-lbl" style={{marginTop:8}} /></>
       ) : display !== null ? (
-        <>{def.type === "rating" && <StarRating value={rawVal} />}<div className="card-value">{display}</div>{def.unit && <div className="card-unit">{def.unit}</div>}<DeltaBadge current={rawVal} previous={prevVal} type={def.type} /></>
+        <>{def.type === "rating" && <StarRating value={rawVal} />}<div className="card-value">{display}</div>{def.unit && <div className="card-unit">{def.unit}</div>}<DeltaBadge current={deltaCurrentVal} previous={deltaPreviousVal} type={def.type} /></>
       ) : (
         <><div className="card-value" style={{fontSize:28,color:"#475569",WebkitTextFillColor:"#475569"}}>--</div><div className="card-unit">No data</div></>
       )}
@@ -484,7 +485,7 @@ function MetricCard({ def, raw, previousRaw, loading }) {
   );
 }
 
-function KpiCard({ label, value, previous, unit, icon, accent, iconBg, type, loading }) {
+function KpiCard({ label, value, deltaCurrent, previous, unit, icon, accent, iconBg, type, loading }) {
   return (
     <div className="card" style={{"--card-accent":accent,"--card-icon-bg":iconBg}}>
       <div className="card-icon">{icon}</div>
@@ -495,7 +496,7 @@ function KpiCard({ label, value, previous, unit, icon, accent, iconBg, type, loa
         <>
           <div className="card-value">{type === "pct" ? fmtPct(value) : fmtNum(value)}</div>
           {unit && <div className="card-unit">{unit}</div>}
-          <DeltaBadge current={value} previous={previous} type={type} />
+          <DeltaBadge current={deltaCurrent !== undefined ? deltaCurrent : value} previous={previous} type={type} />
         </>
       ) : (
         <><div className="card-value" style={{fontSize:28,color:"#475569",WebkitTextFillColor:"#475569"}}>--</div><div className="card-unit">No data</div></>
@@ -874,7 +875,7 @@ function ChatPanel({ selectedMarket, hasData, openAiConfigured, data, apiErrors 
 }
 
 /* ── Dashboard Tab ── */
-function DashboardTab({ savedMarkets, selectedMarket, setSelectedMarket, onRun, onGoToSettings, loading, hasData, fetchedAt, data, previousData, derived, reviewInsights, trends, marketSummary, apiErrors, openAiConfigured, periodWindow, setPeriodWindow, customStart, setCustomStart, customEnd, setCustomEnd, periodMeta }) {
+function DashboardTab({ savedMarkets, selectedMarket, setSelectedMarket, onRun, onGoToSettings, loading, hasData, fetchedAt, data, periodData, previousData, derived, reviewInsights, trends, marketSummary, apiErrors, openAiConfigured, periodWindow, setPeriodWindow, customStart, setCustomStart, customEnd, setCustomEnd, periodMeta }) {
   const configuredMarketDefs = MARKETS.filter(m => savedMarkets.includes(m.code));
   const activeMarket = MARKETS.find(m => m.code === selectedMarket);
   const reviewTrendRows = trends && trends.reviews && trends.reviews.rows ? trends.reviews.rows : [];
@@ -912,7 +913,7 @@ function DashboardTab({ savedMarkets, selectedMarket, setSelectedMarket, onRun, 
             )}
           </div>
         </div>
-        {periodMeta && <div className="period-note">Review metrics: {periodMeta.start} to {periodMeta.end}. Presence metrics use reliable Google data through {periodMeta.presence_end}.</div>}
+        {periodMeta && <div className="period-note">Headline cards show the Partoo snapshot. Deltas and velocity use {periodMeta.start} to {periodMeta.end}; presence period metrics use reliable Google data through {periodMeta.presence_end}.</div>}
         <div className="dash-divider" />
         <div className="dash-run-row">
           <button className="btn btn-run" onClick={onRun} disabled={loading || !selectedMarket}>
@@ -957,12 +958,13 @@ function DashboardTab({ savedMarkets, selectedMarket, setSelectedMarket, onRun, 
             <div className="sec-line" />
           </div>
           <div className="cards-2">
-            {REVIEW_METRICS.map(def => <MetricCard key={def.key} def={def} raw={data[def.key]} previousRaw={previousData[def.key]} loading={loading} />)}
+            {REVIEW_METRICS.map(def => <MetricCard key={def.key} def={def} raw={data[def.key]} deltaCurrentRaw={periodData[def.key]} deltaPreviousRaw={previousData[def.key]} loading={loading} />)}
           </div>
           <div className="cards-2">
             <KpiCard
               label="Response Rate"
               value={derived && derived.response_rate ? derived.response_rate.value : null}
+              deltaCurrent={derived && derived.response_rate ? derived.response_rate.period_value : null}
               previous={derived && derived.response_rate ? derived.response_rate.previous_value : null}
               unit="fast + slow replies / total"
               icon="%"
@@ -973,7 +975,7 @@ function DashboardTab({ savedMarkets, selectedMarket, setSelectedMarket, onRun, 
             />
             <KpiCard
               label="New Reviews This Period"
-              value={extractNum(data.reviews_count, "reviews_count")}
+              value={extractNum(periodData.reviews_count, "reviews_count")}
               previous={extractNum(previousData.reviews_count, "reviews_count")}
               unit={periodMeta ? periodMeta.label : "selected window"}
               icon="+"
@@ -1003,11 +1005,11 @@ function DashboardTab({ savedMarkets, selectedMarket, setSelectedMarket, onRun, 
             <div className="sec-line" />
           </div>
           <div className="cards-auto">
-            {PRESENCE_METRICS.map(def => <MetricCard key={def.key} def={def} raw={data[def.key]} previousRaw={previousData[def.key]} loading={loading} />)}
+            {PRESENCE_METRICS.map(def => <MetricCard key={def.key} def={def} raw={data[def.key]} deltaCurrentRaw={periodData[def.key]} deltaPreviousRaw={previousData[def.key]} loading={loading} />)}
           </div>
           {hasData && !loading && (
             <div className="insight-grid">
-              <PresenceFunnelCard ctr={derived && derived.presence_ctr} />
+              <PresenceFunnelCard ctr={derived && (derived.period_presence_ctr || derived.presence_ctr)} />
               <MarketComparison rows={marketSummary} />
             </div>
           )}
@@ -1033,6 +1035,7 @@ function App() {
   const [saving,         setSaving]         = useState(false);
   const [savingOpenAi,   setSavingOpenAi]   = useState(false);
   const [data,           setData]           = useState({});
+  const [periodData,     setPeriodData]     = useState({});
   const [previousData,   setPreviousData]   = useState({});
   const [derived,        setDerived]        = useState({});
   const [reviewInsights, setReviewInsights] = useState({});
@@ -1064,7 +1067,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    setData({}); setPreviousData({}); setDerived({}); setReviewInsights({}); setTrends({}); setMarketSummary([]); setPeriodMeta(null); setApiErrors({}); setHasData(false); setFetchedAt(null);
+    setData({}); setPeriodData({}); setPreviousData({}); setDerived({}); setReviewInsights({}); setTrends({}); setMarketSummary([]); setPeriodMeta(null); setApiErrors({}); setHasData(false); setFetchedAt(null);
   }, [selectedMarket]);
 
   const saveKeys = useCallback(async () => {
@@ -1123,6 +1126,7 @@ function App() {
       if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || "HTTP " + r.status); }
       const json = await r.json();
       setData(json.metrics || {});
+      setPeriodData(json.period_metrics || {});
       setPreviousData(json.previous_metrics || {});
       setDerived(json.derived || {});
       setReviewInsights(json.review_insights || {});
@@ -1209,6 +1213,7 @@ function App() {
             hasData={hasData}
             fetchedAt={fetchedAt}
             data={data}
+            periodData={periodData}
             previousData={previousData}
             derived={derived}
             reviewInsights={reviewInsights}

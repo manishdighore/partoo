@@ -393,6 +393,27 @@ def fetch_period_metrics(headers, period):
     return results, errors
 
 
+def fetch_snapshot_metrics(headers):
+    results = {}
+    errors = {}
+
+    review_data, review_error = fetch_metrics_batch("review_analytics", REVIEW_METRICS, headers)
+    if review_error:
+        for name in REVIEW_METRICS:
+            errors[name] = review_error
+    else:
+        results.update(review_data)
+
+    presence_data, presence_error = fetch_metrics_batch("presence_analytics", PRESENCE_METRICS, headers)
+    if presence_error:
+        for name in PRESENCE_METRICS:
+            errors[name] = presence_error
+    else:
+        results.update(presence_data)
+
+    return results, errors
+
+
 def compute_response_rate(reply_time):
     if not isinstance(reply_time, dict):
         return None
@@ -597,6 +618,7 @@ def get_metrics():
     log.info("Market: %s -- Fetching dashboard metrics for %s", market, period["label"])
     log.info("=" * 60)
 
+    snapshot_results, snapshot_errors = fetch_snapshot_metrics(headers)
     current_results, current_errors = fetch_period_metrics(headers, period)
 
     previous_period = dict(period)
@@ -614,22 +636,26 @@ def get_metrics():
 
     derived = {
         "response_rate": {
-            "value": compute_response_rate((current_results.get("reply_time") or {}).get("value")),
+            "value": compute_response_rate((snapshot_results.get("reply_time") or {}).get("value")),
+            "period_value": compute_response_rate((current_results.get("reply_time") or {}).get("value")),
             "previous_value": compute_response_rate((previous_results.get("reply_time") or {}).get("value")),
         },
-        "presence_ctr": compute_ctr(current_results),
+        "presence_ctr": compute_ctr(snapshot_results),
+        "period_presence_ctr": compute_ctr(current_results),
         "previous_presence_ctr": compute_ctr(previous_results),
     }
 
-    errors = dict(current_errors)
+    errors = dict(snapshot_errors)
+    for name, msg in current_errors.items():
+        errors["period_{}".format(name)] = msg
     for name, msg in previous_errors.items():
         errors["previous_{}".format(name)] = msg
     errors.update({"trend_{}".format(k): v for k, v in trends.get("errors", {}).items()})
 
     log.info("=" * 60)
     log.info("SUMMARY [%s]:", market)
-    for name in sorted(current_results):
-        log.info("  %-52s  value = %s", name, current_results[name].get("value"))
+    for name in sorted(snapshot_results):
+        log.info("  %-52s  value = %s", name, snapshot_results[name].get("value"))
     if errors:
         log.error("ERRORS:")
         for name, msg in errors.items():
@@ -639,7 +665,8 @@ def get_metrics():
     return jsonify({
         "market": market,
         "period": serialize_period(period),
-        "metrics": current_results,
+        "metrics": snapshot_results,
+        "period_metrics": current_results,
         "previous_metrics": previous_results,
         "derived": derived,
         "review_insights": review_insights,
