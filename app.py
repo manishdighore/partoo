@@ -241,7 +241,7 @@ def add_date_filters(params, start, end, metric_type):
     params = dict(params or {})
     if metric_type == "presence_analytics":
         params["filter_date__gte"] = "{}T00:00:00".format(start.isoformat())
-        params["filter_date__lte"] = "{}T23:59:59".format(end.isoformat())
+        params["filter_date__lte"] = "{}T00:00:00".format(end.isoformat())
     else:
         params["update_date__gte"] = "{}T00:00:00".format(start.isoformat())
         params["update_date__lte"] = "{}T23:59:59".format(end.isoformat())
