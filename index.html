@@ -277,6 +277,7 @@
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback } = React;
 const API = window.location.origin;
+const STORAGE_KEY = "partoo.dashboard.session.v1";
 
 const MARKETS = [
   { code: "DK",  name: "Denmark",              flag: "🇩🇰" },
@@ -403,6 +404,25 @@ function normalizeDistribution(raw) {
     return 0;
   };
   return [1,2,3,4,5].map(star => ({ star, count: pick(star) }));
+}
+function loadStoredSession() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) {
+    return {};
+  }
+}
+function saveStoredSession(session) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  } catch (e) {}
+}
+function sessionKey(market, windowName, start, end) {
+  return [market || "", windowName || "30d", start || "", end || ""].join("|");
+}
+function emptyDashboardState() {
+  return { data:{}, periodData:{}, previousData:{}, derived:{}, reviewInsights:{}, trends:{}, marketSummary:[], periodMeta:null, apiErrors:{}, hasData:false, fetchedAt:null };
 }
 
 function StarRating({ value }) {
@@ -876,7 +896,7 @@ function ChatPanel({ selectedMarket, hasData, openAiConfigured, data, apiErrors 
 }
 
 /* ── Dashboard Tab ── */
-function DashboardTab({ savedMarkets, selectedMarket, setSelectedMarket, onRun, onGoToSettings, loading, hasData, fetchedAt, data, periodData, previousData, derived, reviewInsights, trends, marketSummary, apiErrors, openAiConfigured, periodWindow, setPeriodWindow, customStart, setCustomStart, customEnd, setCustomEnd, periodMeta }) {
+function DashboardTab({ savedMarkets, selectedMarket, setSelectedMarket, onRun, onClearSession, onGoToSettings, loading, hasData, fetchedAt, data, periodData, previousData, derived, reviewInsights, trends, marketSummary, apiErrors, openAiConfigured, periodWindow, setPeriodWindow, customStart, setCustomStart, customEnd, setCustomEnd, periodMeta }) {
   const configuredMarketDefs = MARKETS.filter(m => savedMarkets.includes(m.code));
   const activeMarket = MARKETS.find(m => m.code === selectedMarket);
   const reviewTrendRows = trends && trends.reviews && trends.reviews.rows ? trends.reviews.rows : [];
@@ -921,6 +941,7 @@ function DashboardTab({ savedMarkets, selectedMarket, setSelectedMarket, onRun, 
             {loading ? <><div className="spinner" />Fetching {selectedMarket}...</> : <>&#9654; Run Dashboard</>}
           </button>
           {hasData && <button className="btn btn-ghost" onClick={onRun} disabled={loading}>&#8635; Refresh</button>}
+          {hasData && <button className="btn btn-ghost" onClick={onClearSession} disabled={loading}>Clear saved view</button>}
           {fetchedAt && <span style={{fontSize:12,color:"var(--txt3)",marginLeft:4}}>Updated {fetchedAt.toLocaleTimeString()}</span>}
         </div>
       </div>
@@ -1051,8 +1072,35 @@ function App() {
   const [hasData,        setHasData]        = useState(false);
   const [fetchedAt,      setFetchedAt]      = useState(null);
   const [toast,          setToast]          = useState(null);
+  const [restored,       setRestored]       = useState(false);
 
   const notify = (msg, type) => setToast({ msg, type: type || "ok", id: Date.now() });
+  const applyDashboardState = useCallback((state) => {
+    const next = state || emptyDashboardState();
+    setData(next.data || {});
+    setPeriodData(next.periodData || {});
+    setPreviousData(next.previousData || {});
+    setDerived(next.derived || {});
+    setReviewInsights(next.reviewInsights || {});
+    setTrends(next.trends || {});
+    setMarketSummary(next.marketSummary || []);
+    setPeriodMeta(next.periodMeta || null);
+    setApiErrors(next.apiErrors || {});
+    setHasData(!!next.hasData);
+    setFetchedAt(next.fetchedAt ? new Date(next.fetchedAt) : null);
+  }, []);
+
+  useEffect(() => {
+    const stored = loadStoredSession();
+    if (stored.activeTab) setActiveTab(stored.activeTab);
+    if (stored.selectedMarket) setSelectedMarket(stored.selectedMarket);
+    if (stored.periodWindow) setPeriodWindow(stored.periodWindow);
+    if (stored.customStart) setCustomStart(stored.customStart);
+    if (stored.customEnd) setCustomEnd(stored.customEnd);
+    const key = sessionKey(stored.selectedMarket, stored.periodWindow, stored.customStart, stored.customEnd);
+    if (stored.cache && stored.cache[key]) applyDashboardState(stored.cache[key]);
+    setRestored(true);
+  }, [applyDashboardState]);
 
   useEffect(() => {
     fetch(API + "/api/health")
@@ -1060,16 +1108,25 @@ function App() {
       .then(json => {
         setSavedMarkets(json.configured_markets || []);
         setOpenAiConfigured(!!json.openai_configured);
-        if (!selectedMarket && (json.configured_markets || []).length > 0) {
+        if (restored && !selectedMarket && (json.configured_markets || []).length > 0) {
           setSelectedMarket(json.configured_markets[0]);
         }
       })
       .catch(() => {});
-  }, []);
+  }, [restored, selectedMarket]);
 
   useEffect(() => {
-    setData({}); setPeriodData({}); setPreviousData({}); setDerived({}); setReviewInsights({}); setTrends({}); setMarketSummary([]); setPeriodMeta(null); setApiErrors({}); setHasData(false); setFetchedAt(null);
-  }, [selectedMarket]);
+    if (!restored) return;
+    const stored = loadStoredSession();
+    const key = sessionKey(selectedMarket, periodWindow, customStart, customEnd);
+    applyDashboardState(stored.cache && stored.cache[key] ? stored.cache[key] : emptyDashboardState());
+  }, [restored, selectedMarket, periodWindow, customStart, customEnd, applyDashboardState]);
+
+  useEffect(() => {
+    if (!restored) return;
+    const stored = loadStoredSession();
+    saveStoredSession(Object.assign({}, stored, { activeTab, selectedMarket, periodWindow, customStart, customEnd }));
+  }, [restored, activeTab, selectedMarket, periodWindow, customStart, customEnd]);
 
   const saveKeys = useCallback(async () => {
     const keysToSave = {};
@@ -1126,19 +1183,34 @@ function App() {
       const r = await fetch(API + "/api/metrics?" + params.toString());
       if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || "HTTP " + r.status); }
       const json = await r.json();
-      setData(json.metrics || {});
-      setPeriodData(json.period_metrics || {});
-      setPreviousData(json.previous_metrics || {});
-      setDerived(json.derived || {});
-      setReviewInsights(json.review_insights || {});
-      setTrends(json.trends || {});
-      setPeriodMeta(json.period || null);
-      setApiErrors(json.errors || {});
+      let nextState = {
+        data: json.metrics || {},
+        periodData: json.period_metrics || {},
+        previousData: json.previous_metrics || {},
+        derived: json.derived || {},
+        reviewInsights: json.review_insights || {},
+        trends: json.trends || {},
+        marketSummary: [],
+        periodMeta: json.period || null,
+        apiErrors: json.errors || {},
+        hasData: true,
+        fetchedAt: new Date().toISOString(),
+      };
+      applyDashboardState(nextState);
+      const key = sessionKey(selectedMarket, periodWindow, customStart, customEnd);
+      const stored = loadStoredSession();
+      const cache = Object.assign({}, stored.cache || {}, {[key]: nextState});
+      saveStoredSession(Object.assign({}, stored, { activeTab, selectedMarket, periodWindow, customStart, customEnd, cache }));
       fetch(API + "/api/markets/summary?" + params.toString().replace("market=" + encodeURIComponent(selectedMarket) + "&", ""))
         .then(res => res.ok ? res.json() : { markets: [] })
-        .then(summary => setMarketSummary(summary.markets || []))
+        .then(summary => {
+          nextState = Object.assign({}, nextState, { marketSummary: summary.markets || [] });
+          setMarketSummary(nextState.marketSummary);
+          const currentStored = loadStoredSession();
+          const currentCache = Object.assign({}, currentStored.cache || {}, {[key]: nextState});
+          saveStoredSession(Object.assign({}, currentStored, { activeTab, selectedMarket, periodWindow, customStart, customEnd, cache: currentCache }));
+        })
         .catch(() => setMarketSummary([]));
-      setHasData(true); setFetchedAt(new Date());
       const errCount = Object.keys(json.errors || {}).length;
       notify(errCount > 0 ? selectedMarket + " loaded with " + errCount + " error(s)." : selectedMarket + " loaded!", errCount > 0 ? "err" : "ok");
     } catch (e) {
@@ -1146,7 +1218,17 @@ function App() {
     } finally {
       setLoading(false);
     }
-  }, [selectedMarket, periodWindow, customStart, customEnd]);
+  }, [selectedMarket, periodWindow, customStart, customEnd, activeTab, applyDashboardState]);
+
+  const clearSessionView = useCallback(() => {
+    const stored = loadStoredSession();
+    const key = sessionKey(selectedMarket, periodWindow, customStart, customEnd);
+    const cache = Object.assign({}, stored.cache || {});
+    delete cache[key];
+    saveStoredSession(Object.assign({}, stored, { cache }));
+    applyDashboardState(emptyDashboardState());
+    notify("Saved dashboard view cleared.", "ok");
+  }, [selectedMarket, periodWindow, customStart, customEnd, applyDashboardState]);
 
   const activeMarket = MARKETS.find(m => m.code === selectedMarket);
   const unsaved = savedMarkets.length === 0;
@@ -1209,6 +1291,7 @@ function App() {
             selectedMarket={selectedMarket}
             setSelectedMarket={setSelectedMarket}
             onRun={run}
+            onClearSession={clearSessionView}
             onGoToSettings={() => setActiveTab("settings")}
             loading={loading}
             hasData={hasData}
